@@ -59,6 +59,11 @@ export type CustomOperationHandler = (input: {
   threadId: string | null;
   content: Record<string, unknown>;
 }) => Promise<boolean> | boolean;
+export type OutboundThreadResolver = (input: {
+  platformId: string;
+  threadId: string | null;
+  content: Record<string, unknown>;
+}) => string;
 
 export interface ChatSdkBridgeConfig {
   adapter: Adapter;
@@ -86,6 +91,8 @@ export interface ChatSdkBridgeConfig {
   enrichAttachments?: AttachmentEnricher;
   /** Optional channel-specific operation handler for outbound control messages. */
   handleCustomOperation?: CustomOperationHandler;
+  /** Optional channel-specific target override for outbound posts. */
+  resolveOutboundThreadId?: OutboundThreadResolver;
   /**
    * Maximum text length the underlying adapter accepts in a single message.
    * When set, the bridge splits outbound text longer than this on paragraph
@@ -439,8 +446,10 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
     async deliver(platformId: string, threadId: string | null, message): Promise<string | undefined> {
       // platformId is already in the adapter's encoded format (e.g. "telegram:6037840640",
       // "discord:guildId:channelId") — use it directly as the thread ID
-      const tid = threadId ?? platformId;
       const content = message.content as Record<string, unknown>;
+      const tid = config.resolveOutboundThreadId
+        ? config.resolveOutboundThreadId({ platformId, threadId, content })
+        : (threadId ?? platformId);
 
       if (content.operation === 'edit' && content.messageId) {
         await adapter.editMessage(tid, content.messageId as string, {

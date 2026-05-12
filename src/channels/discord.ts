@@ -76,6 +76,8 @@ registerChannelAdapter('discord', {
         await setDiscordBotNickname(env.DISCORD_BOT_TOKEN, guildId, nick);
         return true;
       },
+      resolveOutboundThreadId: ({ platformId, threadId }) =>
+        policyConfig.disableAutoThreads ? platformId : (threadId ?? platformId),
       supportsThreads: true,
     });
   },

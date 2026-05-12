@@ -225,4 +225,34 @@ describe('createChatSdkBridge.deliver — display cards (send_card)', () => {
       allowed_mentions: { users: ['123456789012345678'] },
     });
   });
+
+  it('can force Discord outbound replies to the parent channel even when a persisted thread id exists', async () => {
+    const { calls, postMessage } = makePostCapture();
+    const platformId = 'discord:1068979784727674901:1502036585779040438';
+    const staleThreadId = 'discord:1068979784727674901:1502036585779040438:1509999999999999999';
+    const bridge = createChatSdkBridge({
+      adapter: stubAdapter({ postMessage }),
+      supportsThreads: true,
+      resolveOutboundThreadId: ({ platformId }) => platformId,
+    });
+
+    await bridge.deliver(platformId, staleThreadId, {
+      kind: 'chat-sdk',
+      content: { text: 'inline reply' },
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].threadId).toBe(platformId);
+    expect(calls[0].threadId).not.toBe(staleThreadId);
+    expect(calls[0].message).toMatchObject({ markdown: 'inline reply' });
+    expect(calls[0].message).not.toHaveProperty('thread_id');
+    expect(calls[0].message).not.toHaveProperty('threadId');
+    expect(calls[0].message).not.toHaveProperty('message_reference');
+    expect(calls[0].message).not.toHaveProperty('messageReference');
+    expect(calls[0].message).not.toHaveProperty('reply_to');
+    expect(calls[0].message).not.toHaveProperty('replyTo');
+    expect(calls[0].message).not.toHaveProperty('auto_archive_duration');
+    expect(calls[0].message).not.toHaveProperty('thread_name');
+    expect(calls[0].message).not.toHaveProperty('name');
+  });
 });
