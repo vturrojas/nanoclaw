@@ -204,4 +204,25 @@ describe('createChatSdkBridge.deliver — display cards (send_card)', () => {
     const msg = calls[0].message as { markdown?: string };
     expect(msg.markdown).toBe('plain hello');
   });
+
+  it('passes allowed_mentions through to the adapter for Discord mention safety', async () => {
+    const { calls, postMessage } = makePostCapture();
+    const bridge = createChatSdkBridge({
+      adapter: stubAdapter({ postMessage }),
+      supportsThreads: false,
+    });
+    await bridge.deliver('discord:guild:chan', null, {
+      kind: 'chat-sdk',
+      content: {
+        text: '<@123456789012345678> please review this',
+        allowed_mentions: { users: ['123456789012345678'] },
+      },
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].message).toMatchObject({
+      markdown: '<@123456789012345678> please review this',
+      allowed_mentions: { users: ['123456789012345678'] },
+    });
+  });
 });

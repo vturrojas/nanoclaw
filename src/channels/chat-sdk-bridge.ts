@@ -15,6 +15,7 @@ import {
   LinkButton,
   type CardChild,
   type Adapter,
+  type AdapterPostableMessage,
   type ConcurrencyStrategy,
   type Message as ChatMessage,
 } from 'chat';
@@ -44,6 +45,20 @@ export interface ReplyContext {
 /** Extract reply context from a platform-specific raw message. Return null if no reply. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ReplyContextExtractor = (raw: Record<string, any>) => ReplyContext | null;
+export type InboundPolicyDecision = { forward: true; threadId?: string | null } | { forward: false; reason: string };
+export type InboundPolicy = (input: {
+  channelId: string;
+  threadId: string;
+  message: ChatMessage;
+  isMention: boolean;
+  isGroup: boolean;
+}) => InboundPolicyDecision;
+export type AttachmentEnricher = (attachments: Array<Record<string, unknown>>) => Promise<string[]> | string[];
+export type CustomOperationHandler = (input: {
+  platformId: string;
+  threadId: string | null;
+  content: Record<string, unknown>;
+}) => Promise<boolean> | boolean;
 
 export interface ChatSdkBridgeConfig {
   adapter: Adapter;
@@ -65,6 +80,12 @@ export interface ChatSdkBridgeConfig {
    * quirk (e.g. Telegram's legacy Markdown parse mode).
    */
   transformOutboundText?: (text: string) => string;
+  /** Optional channel-specific inbound filter/normalizer. */
+  inboundPolicy?: InboundPolicy;
+  /** Optional channel-specific attachment classifier/transcriber. */
+  enrichAttachments?: AttachmentEnricher;
+  /** Optional channel-specific operation handler for outbound control messages. */
+  handleCustomOperation?: CustomOperationHandler;
   /**
    * Maximum text length the underlying adapter accepts in a single message.
    * When set, the bridge splits outbound text longer than this on paragraph
@@ -118,7 +139,6 @@ export function splitForLimit(text: string, limit: number): string[] {
   if (remaining.length > 0) chunks.push(remaining);
   return chunks;
 }
-
 export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter {
   const { adapter } = config;
   const transformText = (t: string): string => (config.transformOutboundText ? config.transformOutboundText(t) : t);
@@ -157,6 +177,13 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
           }
         }
         enriched.push(entry);
+      }
+      if (config.enrichAttachments) {
+        const notes = await config.enrichAttachments(enriched);
+        if (notes.length > 0) {
+          const existingText = typeof serialized.text === 'string' ? serialized.text : '';
+          serialized.text = [existingText, ...notes].filter(Boolean).join('\n\n');
+        }
       }
       serialized.attachments = enriched;
     }
@@ -222,9 +249,17 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       // wirings still fire on in-thread mentions.
       chat.onSubscribedMessage(async (thread, message) => {
         const channelId = adapter.channelIdFromThreadId(thread.id);
+        const decision = config.inboundPolicy?.({
+          channelId,
+          threadId: thread.id,
+          message,
+          isMention: message.isMention === true,
+          isGroup: true,
+        });
+        if (decision && !decision.forward) return;
         await setupConfig.onInbound(
           channelId,
-          thread.id,
+          decision?.threadId === undefined ? thread.id : decision.threadId,
           await messageToInbound(message, message.isMention === true, true),
         );
       });
@@ -232,7 +267,19 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       // @mention in an unsubscribed thread — SDK-confirmed bot mention.
       chat.onNewMention(async (thread, message) => {
         const channelId = adapter.channelIdFromThreadId(thread.id);
-        await setupConfig.onInbound(channelId, thread.id, await messageToInbound(message, true, true));
+        const decision = config.inboundPolicy?.({
+          channelId,
+          threadId: thread.id,
+          message,
+          isMention: true,
+          isGroup: true,
+        });
+        if (decision && !decision.forward) return;
+        await setupConfig.onInbound(
+          channelId,
+          decision?.threadId === undefined ? thread.id : decision.threadId,
+          await messageToInbound(message, true, true),
+        );
       });
 
       // DMs — by definition addressed to the bot. Thread id flows through
@@ -247,7 +294,19 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
           sender: (message.author as any)?.fullName ?? (message.author as any)?.userId ?? 'unknown',
           threadId: thread.id,
         });
-        await setupConfig.onInbound(channelId, thread.id, await messageToInbound(message, true, false));
+        const decision = config.inboundPolicy?.({
+          channelId,
+          threadId: thread.id,
+          message,
+          isMention: true,
+          isGroup: false,
+        });
+        if (decision && !decision.forward) return;
+        await setupConfig.onInbound(
+          channelId,
+          decision?.threadId === undefined ? thread.id : decision.threadId,
+          await messageToInbound(message, true, false),
+        );
       });
 
       // Plain messages in unsubscribed threads.
@@ -262,7 +321,19 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       // flood gate.
       chat.onNewMessage(/[\s\S]*/, async (thread, message) => {
         const channelId = adapter.channelIdFromThreadId(thread.id);
-        await setupConfig.onInbound(channelId, thread.id, await messageToInbound(message, false, true));
+        const decision = config.inboundPolicy?.({
+          channelId,
+          threadId: thread.id,
+          message,
+          isMention: false,
+          isGroup: true,
+        });
+        if (decision && !decision.forward) return;
+        await setupConfig.onInbound(
+          channelId,
+          decision?.threadId === undefined ? thread.id : decision.threadId,
+          await messageToInbound(message, false, true),
+        );
       });
 
       // Handle button clicks (ask_user_question)
@@ -383,6 +454,9 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
         return;
       }
 
+      if (config.handleCustomOperation && (await config.handleCustomOperation({ platformId, threadId, content })))
+        return;
+
       // Ask question card — render as Card with buttons
       if (content.type === 'ask_question' && content.questionId && content.options) {
         const questionId = content.questionId as string;
@@ -473,6 +547,10 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       const rawText = (content.markdown as string) || (content.text as string);
       const text = rawText ? transformText(rawText) : rawText;
       if (text) {
+        const allowedMentions =
+          typeof content.allowed_mentions === 'object' && content.allowed_mentions
+            ? { allowed_mentions: content.allowed_mentions }
+            : {};
         // Attach files if present (FileUpload format: { data, filename })
         const fileUploads = message.files?.map((f: { data: Buffer; filename: string }) => ({
           data: f.data,
@@ -490,7 +568,9 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
           const attachFiles = i === 0 && fileUploads && fileUploads.length > 0;
           const result = await adapter.postMessage(
             tid,
-            attachFiles ? { markdown: chunk, files: fileUploads } : { markdown: chunk },
+            attachFiles
+              ? ({ markdown: chunk, files: fileUploads, ...allowedMentions } as AdapterPostableMessage)
+              : ({ markdown: chunk, ...allowedMentions } as AdapterPostableMessage),
           );
           if (i === 0) firstId = result?.id;
         }

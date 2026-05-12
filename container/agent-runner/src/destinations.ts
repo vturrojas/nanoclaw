@@ -63,9 +63,9 @@ export function findByRouting(
   const db = getInboundDb();
   const row =
     channelType === 'agent'
-      ? (db
-          .prepare("SELECT * FROM destinations WHERE type = 'agent' AND agent_group_id = ?")
-          .get(platformId) as DestRow | undefined)
+      ? (db.prepare("SELECT * FROM destinations WHERE type = 'agent' AND agent_group_id = ?").get(platformId) as
+          | DestRow
+          | undefined)
       : (db
           .prepare("SELECT * FROM destinations WHERE type = 'channel' AND channel_type = ? AND platform_id = ?")
           .get(channelType, platformId) as DestRow | undefined);
@@ -83,7 +83,13 @@ export function buildSystemPromptAddendum(assistantName?: string): string {
   const sections: string[] = [];
 
   if (assistantName) {
-    sections.push(['# You are ' + assistantName, '', `Your name is **${assistantName}**. Use it when the channel asks who you are, when introducing yourself, and when signing any message that explicitly calls for a signature.`].join('\n'));
+    sections.push(
+      [
+        '# You are ' + assistantName,
+        '',
+        `Your name is **${assistantName}**. Use it when the channel asks who you are, when introducing yourself, and when signing any message that explicitly calls for a signature.`,
+      ].join('\n'),
+    );
   }
 
   sections.push(buildDestinationsSection());
@@ -127,5 +133,20 @@ function buildDestinationsSection(): string {
   lines.push(
     'To send a message mid-response (e.g., an acknowledgment before a long task), call the `send_message` MCP tool with the `to` parameter set to a destination name.',
   );
+  lines.push('');
+  lines.push('## Discord operating policy');
+  lines.push('');
+  lines.push('- Use the configured agent channel as the primary workspace.');
+  lines.push('- Reply inline in the current channel by default.');
+  lines.push('- Do not DM the user unless explicitly instructed.');
+  lines.push('- Do not create new threads unless explicitly instructed.');
+  lines.push(
+    '- When asked to mention another bot/user, resolve the name to a numeric Discord user ID and mention using `<@USER_ID>`.',
+  );
+  lines.push('- Never write `<@bot-name>`.');
+  lines.push('- Review image attachments before replying when vision is configured.');
+  lines.push('- Transcribe voice/audio attachments before replying when transcription is configured.');
+  lines.push('- Ignore ambient bot chatter unless directly addressed or task-relevant.');
+  lines.push('- Avoid runaway bot loops.');
   return lines.join('\n');
 }

@@ -50,7 +50,7 @@ Run the script directly, not from inside a Claude session — the deterministic 
 
 **What it does:** merges `.env`, seeds the v2 DB from `registered_groups`, copies group folders + session data + scheduled tasks, installs the channel adapters you select, copies channel auth state (including Baileys keystore + LID mappings for WhatsApp), builds the agent container.
 
-**What it doesn't:** flip the system service. Pick *"switch to v2"* at the prompt, or do it manually after testing — your v1 install is left untouched.
+**What it doesn't:** flip the system service. Pick _"switch to v2"_ at the prompt, or do it manually after testing — your v1 install is left untouched.
 
 See [docs/v1-to-v2-changes.md](docs/v1-to-v2-changes.md) for what's different and [docs/migration-dev.md](docs/migration-dev.md) for development notes.
 
@@ -74,7 +74,7 @@ See [docs/v1-to-v2-changes.md](docs/v1-to-v2-changes.md) for what's different an
 
 ## What It Supports
 
-- **Multi-channel messaging** — WhatsApp, Telegram, Discord, Slack, Microsoft Teams, iMessage, Matrix, Google Chat, Webex, Linear, GitHub, WeChat, and email via Resend. Installed on demand with `/add-<channel>` skills. Run one or many at the same time.
+- **Multi-channel messaging** — WhatsApp, Telegram, Discord, Slack, Microsoft Teams, iMessage, Matrix, Google Chat, Webex, Linear, GitHub, WeChat, and email via Resend. Installed on demand with `/add-<channel>` skills. Run one or many at the same time. Discord setup details live in [docs/discord.md](docs/discord.md).
 - **Flexible isolation** — connect each channel to its own agent for full privacy, share one agent across many channels for unified memory with separate conversations, or fold multiple channels into a single shared session so one conversation spans many surfaces. Pick per channel via `/manage-channels`. See [docs/isolation-model.md](docs/isolation-model.md).
 - **Per-agent workspace** — each agent group has its own `CLAUDE.md`, its own memory, its own container, and only the mounts you allow. Nothing crosses the boundary unless you wire it to.
 - **Scheduled tasks** — recurring jobs that run Claude and can message you back
@@ -93,6 +93,7 @@ Talk to your assistant with the trigger word (default: `@Andy`):
 ```
 
 From a channel you own or administer, you can manage groups and tasks:
+
 ```
 @Andy list all scheduled tasks across groups
 @Andy pause the Monday briefing task
@@ -125,6 +126,7 @@ This keeps trunk as pure registry and infra, and every fork stays lean — users
 Skills we'd like to see:
 
 **Communication Channels**
+
 - `/add-signal` — Add Signal as a channel
 
 ## Requirements
@@ -147,6 +149,7 @@ Two SQLite files per session, each with exactly one writer — no cross-mount co
 For the full architecture writeup see [docs/architecture.md](docs/architecture.md); for the three-level isolation model see [docs/isolation-model.md](docs/isolation-model.md).
 
 Key files:
+
 - `src/index.ts` — entry point: DB init, channel adapters, delivery polls, sweep
 - `src/router.ts` — inbound routing: messaging group → agent group → session → `inbound.db`
 - `src/delivery.ts` — polls `outbound.db`, delivers via adapter, handles system actions
