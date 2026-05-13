@@ -204,6 +204,15 @@ export async function routeInbound(event: InboundEvent): Promise<void> {
     mg = found.mg;
     agentCount = found.agentCount;
   }
+  log.info('Inbound messaging group resolved', {
+    channelType: event.channelType,
+    platformId: event.platformId,
+    threadId: event.threadId,
+    isMention,
+    messagingGroupId: mg.id,
+    agentCount,
+    isGroup: mg.is_group,
+  });
 
   // 1b. No wirings — either silent drop (plain chatter / denied channel) or
   //     escalate to owner for channel-registration approval.
@@ -286,6 +295,16 @@ export async function routeInbound(event: InboundEvent): Promise<void> {
     if (engages && accessOk && scopeOk) {
       await deliverToAgent(agent, agentGroup, mg, event, userId, adapter?.supportsThreads === true, true);
       engagedCount++;
+      log.info('Inbound agent route selected', {
+        channelType: event.channelType,
+        platformId: event.platformId,
+        threadId: event.threadId,
+        isMention,
+        messagingGroupId: mg.id,
+        agentGroupId: agent.agent_group_id,
+        agentGroupName: agentGroup.name,
+        engageMode: agent.engage_mode,
+      });
 
       // Mention-sticky: ask the adapter to subscribe the thread so the
       // platform's subscribed-message path carries follow-ups without

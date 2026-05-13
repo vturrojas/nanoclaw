@@ -4,13 +4,18 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@chat-adapter/discord@4.26.0':
+    hash: af26979ffe79e790333610d43e69dda3c960916bba2e0ba73a02eb053194126f
+    path: patches/@chat-adapter__discord@4.26.0.patch
+
 importers:
 
   .:
     dependencies:
       '@chat-adapter/discord':
         specifier: 4.26.0
-        version: 4.26.0
+        version: 4.26.0(patch_hash=af26979ffe79e790333610d43e69dda3c960916bba2e0ba73a02eb053194126f)
       '@clack/core':
         specifier: ^1.2.0
         version: 1.2.0
@@ -1595,7 +1600,7 @@ packages:
 
 snapshots:
 
-  '@chat-adapter/discord@4.26.0':
+  '@chat-adapter/discord@4.26.0(patch_hash=af26979ffe79e790333610d43e69dda3c960916bba2e0ba73a02eb053194126f)':
     dependencies:
       '@chat-adapter/shared': 4.26.0
       chat: 4.26.0

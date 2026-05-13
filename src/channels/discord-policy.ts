@@ -5,6 +5,7 @@ export type TranscriptionBackend = 'openai' | 'local' | 'disabled';
 
 export interface DiscordPolicyConfig {
   agentChannelIds?: Set<string>;
+  ignoredMentionIds?: Set<string>;
   disableAutoThreads?: boolean;
   disableDms?: boolean;
   allowBotMessages?: BotMessageMode;
@@ -15,6 +16,7 @@ export interface DiscordPolicyConfig {
 
 export interface DiscordPolicyEnv {
   DISCORD_AGENT_CHANNEL_IDS?: string;
+  DISCORD_IGNORED_MENTION_IDS?: string;
   DISCORD_DISABLE_AUTO_THREADS?: string;
   DISCORD_DISABLE_DMS?: string;
   DISCORD_ALLOW_BOT_MESSAGES?: string;
@@ -52,6 +54,12 @@ export function discordPolicyFromEnv(
         .map((id) => id.trim())
         .filter(Boolean),
     ),
+    ignoredMentionIds: new Set(
+      (env.DISCORD_IGNORED_MENTION_IDS ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
     disableAutoThreads: env.DISCORD_DISABLE_AUTO_THREADS === 'true',
     disableDms: env.DISCORD_DISABLE_DMS === 'true',
     allowBotMessages:
@@ -72,6 +80,10 @@ export function createDiscordInboundPolicy(config: DiscordPolicyConfig = {}) {
   return {
     shouldForward(input: DiscordInboundDecisionInput): DiscordInboundDecision {
       if (input.isMe) return { forward: false, reason: 'own_message' };
+
+      if (!input.isMention && isIgnoredMentionTarget(input.text, config)) {
+        return { forward: false, reason: 'ignored_mention_target' };
+      }
 
       if (config.disableDms && input.isDm && !DM_REQUEST_RE.test(input.text)) {
         return { forward: false, reason: 'dm_disabled' };
@@ -101,6 +113,16 @@ export function createDiscordInboundPolicy(config: DiscordPolicyConfig = {}) {
       return START_THREAD_RE.test(input.text) ? input.threadId : null;
     },
   };
+}
+
+function isIgnoredMentionTarget(text: string, config: DiscordPolicyConfig): boolean {
+  const ids = config.ignoredMentionIds ?? new Set<string>();
+  if (ids.size === 0) return false;
+  for (const match of text.matchAll(/<@!?(\d{15,22})>/g)) {
+    const id = match[1];
+    if (id && ids.has(id)) return true;
+  }
+  return false;
 }
 
 function isTaskInAgentChannel(input: DiscordInboundDecisionInput, config: DiscordPolicyConfig): boolean {

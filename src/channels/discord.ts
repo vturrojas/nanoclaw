@@ -26,12 +26,16 @@ registerChannelAdapter('discord', {
       'DISCORD_PUBLIC_KEY',
       'DISCORD_APPLICATION_ID',
       'DISCORD_AGENT_CHANNEL_IDS',
+      'DISCORD_IGNORED_MENTION_IDS',
       'DISCORD_DISABLE_AUTO_THREADS',
       'DISCORD_DISABLE_DMS',
       'DISCORD_ALLOW_BOT_MESSAGES',
       'TRANSCRIPTION_BACKEND',
     ]);
     if (!env.DISCORD_BOT_TOKEN) return null;
+    if (env.DISCORD_DISABLE_AUTO_THREADS) {
+      process.env.DISCORD_DISABLE_AUTO_THREADS = env.DISCORD_DISABLE_AUTO_THREADS;
+    }
     const policyConfig = {
       ...discordPolicyFromEnv(env),
       openAiApiKey: process.env.OPENAI_API_KEY,

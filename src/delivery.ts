@@ -365,6 +365,7 @@ async function deliverMessage(
     id: msg.id,
     channelType: msg.channel_type,
     platformId: msg.platform_id,
+    threadId: msg.thread_id,
     platformMsgId,
     fileCount: files?.length,
   });

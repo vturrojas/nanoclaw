@@ -88,6 +88,32 @@ describe('createDiscordInboundPolicy', () => {
       },
     );
   });
+
+  it('drops messages explicitly addressed to configured non-self bots', () => {
+    const policy = createDiscordInboundPolicy({
+      ignoredMentionIds: new Set(['1502035240690913310', '1502065442515058708']),
+    });
+
+    expect(
+      policy.shouldForward({
+        text: '<@1502035240690913310> acknowledge inline check.',
+        isMention: false,
+        authorId: 'human-1',
+        isBot: false,
+        channelId: 'chan-1',
+      }),
+    ).toEqual({ forward: false, reason: 'ignored_mention_target' });
+
+    expect(
+      policy.shouldForward({
+        text: '<@1490150963464503377> acknowledge inline check.',
+        isMention: true,
+        authorId: 'human-1',
+        isBot: false,
+        channelId: 'chan-1',
+      }),
+    ).toEqual({ forward: true });
+  });
 });
 
 describe('discordPolicyFromEnv', () => {
@@ -97,6 +123,7 @@ describe('discordPolicyFromEnv', () => {
       DISCORD_DISABLE_AUTO_THREADS: 'true',
       DISCORD_DISABLE_DMS: 'true',
       DISCORD_ALLOW_BOT_MESSAGES: 'mentions',
+      DISCORD_IGNORED_MENTION_IDS: '333, 444',
     });
 
     expect(config.agentChannelIds).toEqual(new Set(['111', '222']));
@@ -104,6 +131,7 @@ describe('discordPolicyFromEnv', () => {
     expect(config.disableDms).toBe(true);
     expect(config.allowBotMessages).toBe('mentions');
     expect(config.transcriptionBackend).toBe('disabled');
+    expect(config.ignoredMentionIds).toEqual(new Set(['333', '444']));
   });
 });
 

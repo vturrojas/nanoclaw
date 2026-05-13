@@ -37,6 +37,7 @@ import {
 import { getDeliveredIds } from './db/session-db.js';
 import { resolveSession, outboundDbPath, openInboundDb } from './session-manager.js';
 import { deliverSessionMessages, setDeliveryAdapter } from './delivery.js';
+import { log } from './log.js';
 
 function now(): string {
   return new Date().toISOString();
@@ -61,12 +62,12 @@ function seedAgentAndChannel(): void {
   });
 }
 
-function insertOutbound(agentGroupId: string, sessionId: string, msgId: string): void {
+function insertOutbound(agentGroupId: string, sessionId: string, msgId: string, threadId: string | null = null): void {
   const db = new Database(outboundDbPath(agentGroupId, sessionId));
   db.prepare(
-    `INSERT INTO messages_out (id, timestamp, kind, platform_id, channel_type, content)
-     VALUES (?, datetime('now'), 'chat', 'telegram:123', 'telegram', ?)`,
-  ).run(msgId, JSON.stringify({ text: 'hello' }));
+    `INSERT INTO messages_out (id, timestamp, kind, platform_id, channel_type, thread_id, content)
+     VALUES (?, datetime('now'), 'chat', 'telegram:123', 'telegram', ?, ?)`,
+  ).run(msgId, threadId, JSON.stringify({ text: 'hello' }));
   db.close();
 }
 
@@ -217,6 +218,33 @@ describe('deliverSessionMessages — retry and permanent failure', () => {
     // Attempt 3 — not called, message already delivered
     await deliverSessionMessages(session);
     expect(callCount).toBe(2);
+  });
+});
+
+describe('deliverSessionMessages — diagnostics', () => {
+  it('logs the resolved stored thread id for delivered messages', async () => {
+    seedAgentAndChannel();
+    const { session } = resolveSession('ag-1', 'mg-1', null, 'shared');
+    insertOutbound('ag-1', session.id, 'out-threaded', 'thread-123');
+
+    const infoSpy = vi.spyOn(log, 'info');
+    setDeliveryAdapter({
+      async deliver() {
+        return 'plat-threaded';
+      },
+    });
+
+    await deliverSessionMessages(session);
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      'Message delivered',
+      expect.objectContaining({
+        id: 'out-threaded',
+        platformId: 'telegram:123',
+        threadId: 'thread-123',
+        platformMsgId: 'plat-threaded',
+      }),
+    );
   });
 });
 

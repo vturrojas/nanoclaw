@@ -226,6 +226,25 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
     };
   }
 
+  function logInboundDecision(input: {
+    dispatch: string;
+    channelId: string;
+    threadId: string;
+    isMention: boolean;
+    decision?: InboundPolicyDecision;
+  }): void {
+    log.info('Inbound route decision', {
+      adapter: adapter.name,
+      dispatch: input.dispatch,
+      channelId: input.channelId,
+      threadId: input.threadId,
+      isMention: input.isMention,
+      forward: input.decision ? input.decision.forward : true,
+      resolvedThreadId: input.decision?.forward ? (input.decision.threadId ?? input.threadId) : null,
+      reason: input.decision && !input.decision.forward ? input.decision.reason : undefined,
+    });
+  }
+
   const bridge: ChannelAdapter = {
     name: adapter.name,
     channelType: adapter.name,
@@ -263,6 +282,13 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
           isMention: message.isMention === true,
           isGroup: true,
         });
+        logInboundDecision({
+          dispatch: 'subscribed_message',
+          channelId,
+          threadId: thread.id,
+          isMention: message.isMention === true,
+          decision,
+        });
         if (decision && !decision.forward) return;
         await setupConfig.onInbound(
           channelId,
@@ -281,6 +307,7 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
           isMention: true,
           isGroup: true,
         });
+        logInboundDecision({ dispatch: 'new_mention', channelId, threadId: thread.id, isMention: true, decision });
         if (decision && !decision.forward) return;
         await setupConfig.onInbound(
           channelId,
@@ -308,6 +335,7 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
           isMention: true,
           isGroup: false,
         });
+        logInboundDecision({ dispatch: 'direct_message', channelId, threadId: thread.id, isMention: true, decision });
         if (decision && !decision.forward) return;
         await setupConfig.onInbound(
           channelId,
@@ -335,6 +363,7 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
           isMention: false,
           isGroup: true,
         });
+        logInboundDecision({ dispatch: 'new_message', channelId, threadId: thread.id, isMention: false, decision });
         if (decision && !decision.forward) return;
         await setupConfig.onInbound(
           channelId,
@@ -450,6 +479,12 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       const tid = config.resolveOutboundThreadId
         ? config.resolveOutboundThreadId({ platformId, threadId, content })
         : (threadId ?? platformId);
+      log.info('Outbound route resolved', {
+        adapter: adapter.name,
+        platformId,
+        threadId,
+        resolvedTarget: tid,
+      });
 
       if (content.operation === 'edit' && content.messageId) {
         await adapter.editMessage(tid, content.messageId as string, {
